@@ -1,18 +1,14 @@
 name: Build Windows VST3
 
 on:
-  push:
-    branches: [ "main" ]
   workflow_dispatch:
 
 jobs:
   build:
-    name: Build VST3
     runs-on: windows-latest
 
     steps:
-    - name: Checkout Code
-      uses: actions/checkout@v4
+    - uses: actions/checkout@v4
 
     - name: Configure CMake
       run: cmake -B build
