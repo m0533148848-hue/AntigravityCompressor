@@ -1,7 +1,6 @@
 name: Build Windows VST3
 
-on:
-  workflow_dispatch:
+on: [push, workflow_dispatch]
 
 jobs:
   build:
