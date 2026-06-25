@@ -1,21 +1,9 @@
 #pragma once
 #include <juce_audio_processors/juce_audio_processors.h>
-#include <juce_gui_basics/juce_gui_basics.h>
 
-// הגדרת ממשק המשתמש (החלון הגרפי של הפלאגין)
-class AntigravityCompressorProcessor;
-class AntigravityCompressorEditor : public juce::AudioProcessorEditor {
-public:
-    AntigravityCompressorEditor (AntigravityCompressorProcessor&);
-    ~AntigravityCompressorEditor() override;
-    void paint (juce::Graphics&) override;
-    void resized() override;
-private:
-    AntigravityCompressorProcessor& audioProcessor;
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AntigravityCompressorEditor)
-};
+// הצהרה מוקדמת על קובץ הממשק (Editor)
+class AntigravityCompressorEditor;
 
-// הגדרת מנוע הסאונד (הקומפרסור)
 class AntigravityCompressorProcessor : public juce::AudioProcessor {
 public:
     AntigravityCompressorProcessor();
@@ -43,7 +31,7 @@ public:
     void getStateInformation (juce::MemoryBlock& destData) override {}
     void setStateInformation (const void* data, int sizeInBytes) override {}
 
-    // מערכת ניהול הפרמטרים של הפלאגין
+    // המערכת לניהול כל הכפתורים והפרמטרים
     juce::AudioProcessorValueTreeState apvts;
 
 private:
