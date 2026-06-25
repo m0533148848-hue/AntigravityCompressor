@@ -29,11 +29,13 @@ target_compile_definitions(AntigravityCompressor
     JUCE_USE_CURL=0
 )
 
-# חיבור קבצי הקוד שלנו
+# חיבור קבצי הקוד שלנו (כאן הוספנו את קבצי המסך שיצרנו)
 target_sources(AntigravityCompressor
     PRIVATE
         Source/PluginProcessor.cpp
         Source/PluginProcessor.h
+        Source/PluginEditor.cpp
+        Source/PluginEditor.h
 )
 
 # חיבור למנוע של JUCE
