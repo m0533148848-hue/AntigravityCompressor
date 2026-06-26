@@ -1,38 +1,36 @@
 #pragma once
-
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "PluginProcessor.h"
 
 // ==============================================================================
-// רכיב גרפי זמני עבור תצוגת הגלים (כאן נצייר את האודיו בהמשך)
+// תצוגת האודיו וטווחי הטרשהולד (משתמש בטיימר כדי להתעדכן 30 פעם בשנייה)
 // ==============================================================================
-class WaveformDisplay : public juce::Component {
+class WaveformDisplay : public juce::Component, public juce::Timer {
 public:
-    void paint(juce::Graphics& g) override {
-        g.fillAll(juce::Colours::black);
-        g.setColour(juce::Colours::cyan);
-        g.drawRect(getLocalBounds(), 2);
-        g.setFont(20.0f);
-        g.drawText("Waveform & Range Display Area", getLocalBounds(), juce::Justification::centred, true);
+    WaveformDisplay(AntigravityCompressorProcessor& p) : processor(p) {
+        startTimerHz(30); // ציור מחדש 30 פעמים בשנייה
     }
+    ~WaveformDisplay() override { stopTimer(); }
+
+    void timerCallback() override { repaint(); }
+    void paint(juce::Graphics& g) override;
+
+private:
+    AntigravityCompressorProcessor& processor;
 };
 
-// ==============================================================================
-// רכיב גרפי זמני עבור ציור המעטפת (כאן נצייר נקודות בסגנון סרום)
 // ==============================================================================
 class EnvelopeDrawer : public juce::Component {
 public:
     void paint(juce::Graphics& g) override {
         g.fillAll(juce::Colour(0xff2a2a3e));
-        g.setColour(juce::Colour(0xffff0055)); // ורוד ניאון
+        g.setColour(juce::Colour(0xffff0055));
         g.drawRect(getLocalBounds(), 2);
         g.setFont(20.0f);
-        g.drawText("Envelope Drawer Area (Serum Style)", getLocalBounds(), juce::Justification::centred, true);
+        g.drawText("Envelope Drawer Area (Next Step)", getLocalBounds(), juce::Justification::centred, true);
     }
 };
 
-// ==============================================================================
-// המחלקה של הממשק הגרפי (המסך הראשי של הפלאגין)
 // ==============================================================================
 class AntigravityCompressorEditor  : public juce::AudioProcessorEditor
 {
@@ -46,11 +44,9 @@ public:
 private:
     AntigravityCompressorProcessor& audioProcessor;
 
-    // --- המסכים החדשים שלנו ---
     WaveformDisplay waveformDisplay;
     EnvelopeDrawer envelopeDrawer;
 
-    // --- הכפתורים ---
     juce::Slider threshUpSlider;
     juce::Slider threshDownSlider;
     juce::ComboBox modeComboBox;
