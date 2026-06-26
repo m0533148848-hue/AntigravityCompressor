@@ -16,20 +16,27 @@ private:
     std::array<float, 600> outHistory { 0.0f };
 };
 
-// --- המוח החדש של צייר המעטפות (LFO) ---
+// --- המבנה החדש ששומר גם את הנקודה וגם את העקומה שיוצאת ממנה ---
+struct EnvPoint {
+    float x;
+    float y;
+    float curve; // ערך בין 1.0- ל-1.0 (0 זה קו ישר)
+};
+
 class EnvelopeDrawer : public juce::Component {
 public:
     EnvelopeDrawer();
     void paint(juce::Graphics& g) override;
     
-    // קריאת לחיצות עכבר ליצירה, מחיקה וגרירת נקודות
     void mouseDown(const juce::MouseEvent& e) override;
     void mouseDrag(const juce::MouseEvent& e) override;
     void mouseDoubleClick(const juce::MouseEvent& e) override;
 
 private:
-    std::vector<juce::Point<float>> points; // הנקודות עצמן (בערכים של 0.0 עד 1.0)
-    int draggingIndex = -1; // איזה נקודה אנחנו גוררים עכשיו?
+    std::vector<EnvPoint> points;
+    int draggingIndex = -1;       // גרירת נקודה
+    int draggingCurveIndex = -1;  // גרירת ידית העיקול
+    float dragStartCurve = 0.0f;  // שמירת ערך העקומה בתחילת הגרירה
     void sortPoints();
 };
 
@@ -84,7 +91,6 @@ private:
     std::unique_ptr<SliderAttachment> mixAttachment;
     std::unique_ptr<ButtonAttachment> deltaAttachment;
 
-    // חיבורי ה-Sidechain ל-APVTS
     std::unique_ptr<ComboBoxAttachment> scActionAttachment;
     std::unique_ptr<ComboBoxAttachment> scCondAttachment;
     std::unique_ptr<ComboBoxAttachment> scRangeAttachment;
