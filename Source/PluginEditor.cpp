@@ -1,17 +1,23 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
-// הלוגיקה של ציור האודיו
+void WaveformDisplay::timerCallback() {
+    for (size_t i = 0; i < inHistory.size() - 1; ++i) {
+        inHistory[i] = inHistory[i + 1];
+        outHistory[i] = outHistory[i + 1];
+    }
+    inHistory.back() = processor.currentInPeak.exchange(0.0f);
+    outHistory.back() = processor.currentOutPeak.exchange(0.0f);
+    repaint();
+}
+
 void WaveformDisplay::paint(juce::Graphics& g) {
     g.fillAll(juce::Colours::black);
     auto bounds = getLocalBounds().toFloat();
     float centerY = bounds.getHeight() / 2.0f;
-    
-    // משיכת הערכים של הטרשהולד מהכפתורים
+    float width = bounds.getWidth();
     float threshUpDb = processor.apvts.getRawParameterValue("THRESH_UP")->load();
     float threshDownDb = processor.apvts.getRawParameterValue("THRESH_DOWN")->load();
-    
-    // המרה למתמטיקה של גובה במסך
     float ampUp = juce::Decibels::decibelsToGain(threshUpDb);
     float ampDown = juce::Decibels::decibelsToGain(threshDownDb);
     
@@ -20,100 +26,89 @@ void WaveformDisplay::paint(juce::Graphics& g) {
     float yDownTop = centerY - (ampDown * centerY);
     float yDownBottom = centerY + (ampDown * centerY);
     
-    // צביעת הרקע של חלון העבודה שלנו (השטח הפעיל) בכחול שקוף
     g.setColour(juce::Colour(0x3000ccff));
-    g.fillRect(0.0f, yUpTop, bounds.getWidth(), yDownTop - yUpTop); // החצי העליון של הגל
-    g.fillRect(0.0f, yDownBottom, bounds.getWidth(), yUpBottom - yDownBottom); // החצי התחתון של הגל
+    g.fillRect(0.0f, yUpTop, width, yDownTop - yUpTop);
+    g.fillRect(0.0f, yDownBottom, width, yUpBottom - yDownBottom);
     
-    // ציור קווי הגל
-    juce::Path inPath;
-    juce::Path outPath;
+    juce::Path inPath; juce::Path outPath;
+    int numPoints = inHistory.size();
+    float xStep = width / (float)numPoints;
     
-    int numSamples = AntigravityCompressorProcessor::visualBufferSize;
-    int currentIndex = processor.visualBufferIndex.load();
-    float xStep = bounds.getWidth() / (float)numSamples;
-    
-    for (int i = 0; i < numSamples; ++i) {
-        int readIndex = (currentIndex + i) % numSamples;
-        float inSample = processor.inVisualBuffer[readIndex];
-        float outSample = processor.outVisualBuffer[readIndex];
-        
+    for (int i = 0; i < numPoints; ++i) {
         float x = i * xStep;
-        float yIn = centerY - (inSample * centerY);
-        float yOut = centerY - (outSample * centerY);
-        
+        float inVal = inHistory[i] * centerY;
+        float outVal = outHistory[i] * centerY;
         if (i == 0) {
-            inPath.startNewSubPath(x, yIn);
-            outPath.startNewSubPath(x, yOut);
+            inPath.startNewSubPath(x, centerY - inVal);
+            outPath.startNewSubPath(x, centerY - outVal);
         } else {
-            inPath.lineTo(x, yIn);
-            outPath.lineTo(x, yOut);
+            inPath.lineTo(x, centerY - inVal);
+            outPath.lineTo(x, centerY - outVal);
         }
     }
+    for (int i = numPoints - 1; i >= 0; --i) {
+        float x = i * xStep;
+        inPath.lineTo(x, centerY + (inHistory[i] * centerY));
+        outPath.lineTo(x, centerY + (outHistory[i] * centerY));
+    }
+    inPath.closeSubPath(); outPath.closeSubPath();
     
-    // הגל המקורי (אפור)
-    g.setColour(juce::Colours::grey.withAlpha(0.6f));
-    g.strokePath(inPath, juce::PathStrokeType(1.5f));
+    g.setColour(juce::Colours::grey.withAlpha(0.6f)); g.fillPath(inPath);
+    g.setColour(juce::Colours::limegreen.withAlpha(0.8f)); g.fillPath(outPath);
     
-    // הגל המעובד (ירוק בוהק)
-    g.setColour(juce::Colours::limegreen);
-    g.strokePath(outPath, juce::PathStrokeType(1.5f));
-    
-    // שרטוט קווי הטרשהולד הקשיחים
     g.setColour(juce::Colours::cyan);
-    g.drawLine(0.0f, yUpTop, bounds.getWidth(), yUpTop, 1.0f);
-    g.drawLine(0.0f, yUpBottom, bounds.getWidth(), yUpBottom, 1.0f);
-    
+    g.drawLine(0.0f, yUpTop, width, yUpTop, 1.0f); g.drawLine(0.0f, yUpBottom, width, yUpBottom, 1.0f);
     g.setColour(juce::Colours::blue);
-    g.drawLine(0.0f, yDownTop, bounds.getWidth(), yDownTop, 1.0f);
-    g.drawLine(0.0f, yDownBottom, bounds.getWidth(), yDownBottom, 1.0f);
-    
-    g.setColour(juce::Colours::white.withAlpha(0.3f));
-    g.drawRect(bounds, 1.0f);
+    g.drawLine(0.0f, yDownTop, width, yDownTop, 1.0f); g.drawLine(0.0f, yDownBottom, width, yDownBottom, 1.0f);
+    g.setColour(juce::Colours::white.withAlpha(0.3f)); g.drawRect(bounds, 1.0f);
 }
 
-// בניית המסך הראשי
 AntigravityCompressorEditor::AntigravityCompressorEditor (AntigravityCompressorProcessor& p)
-    : AudioProcessorEditor (&p), audioProcessor (p), waveformDisplay(p) // חיבור התצוגה למנוע
+    : AudioProcessorEditor (&p), audioProcessor (p), waveformDisplay(p)
 {
     addAndMakeVisible(waveformDisplay);
     addAndMakeVisible(envelopeDrawer);
 
-    threshUpSlider.setSliderStyle(juce::Slider::LinearHorizontal);
-    threshUpSlider.setTextBoxStyle(juce::Slider::TextBoxLeft, false, 80, 20);
-    addAndMakeVisible(threshUpSlider);
-    threshUpAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(audioProcessor.apvts, "THRESH_UP", threshUpSlider);
+    // פונקציית עזר להגדרת כל כפתור להיות עגול עם מסך טקסט מעליו
+    auto setupRotaryKnob = [this](juce::Slider& slider) {
+        slider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+        slider.setTextBoxStyle(juce::Slider::TextBoxAbove, false, 60, 20);
+        addAndMakeVisible(slider);
+    };
 
-    threshDownSlider.setSliderStyle(juce::Slider::LinearHorizontal);
-    threshDownSlider.setTextBoxStyle(juce::Slider::TextBoxLeft, false, 80, 20);
-    addAndMakeVisible(threshDownSlider);
+    setupRotaryKnob(inGainSlider);
+    inGainAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(audioProcessor.apvts, "IN_GAIN", inGainSlider);
+
+    setupRotaryKnob(threshDownSlider);
     threshDownAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(audioProcessor.apvts, "THRESH_DOWN", threshDownSlider);
 
-    modeComboBox.addItem("Ratio (Relative)", 1);
-    modeComboBox.addItem("Shift (Arbitrary)", 2);
-    modeComboBox.addItem("Target (Absolute)", 3);
+    setupRotaryKnob(threshUpSlider);
+    threshUpAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(audioProcessor.apvts, "THRESH_UP", threshUpSlider);
+
+    modeComboBox.addItem("Ratio", 1);
+    modeComboBox.addItem("Shift", 2);
+    modeComboBox.addItem("Target", 3);
     addAndMakeVisible(modeComboBox);
     modeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(audioProcessor.apvts, "MODE", modeComboBox);
 
-    ratioSlider.setSliderStyle(juce::Slider::LinearHorizontal);
-    ratioSlider.setTextBoxStyle(juce::Slider::TextBoxLeft, false, 80, 20);
-    addAndMakeVisible(ratioSlider);
+    setupRotaryKnob(ratioSlider);
     ratioAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(audioProcessor.apvts, "RATIO", ratioSlider);
 
-    shiftSlider.setSliderStyle(juce::Slider::LinearHorizontal);
-    shiftSlider.setTextBoxStyle(juce::Slider::TextBoxLeft, false, 80, 20);
-    addAndMakeVisible(shiftSlider);
+    setupRotaryKnob(shiftSlider);
     shiftAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(audioProcessor.apvts, "SHIFT", shiftSlider);
 
-    targetSlider.setSliderStyle(juce::Slider::LinearHorizontal);
-    targetSlider.setTextBoxStyle(juce::Slider::TextBoxLeft, false, 80, 20);
-    addAndMakeVisible(targetSlider);
+    setupRotaryKnob(targetSlider);
     targetAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(audioProcessor.apvts, "TARGET", targetSlider);
+
+    setupRotaryKnob(outGainSlider);
+    outGainAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(audioProcessor.apvts, "OUT_GAIN", outGainSlider);
 
     addAndMakeVisible(lockButton);
     lockAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(audioProcessor.apvts, "LOCK_TO_LOWER", lockButton);
 
-    setSize (600, 750);
+    setResizable(true, true);
+    setResizeLimits(800, 500, 1600, 1000);
+    setSize(1100, 650); // גודל פנורמי רחב כמו בציור
 }
 
 AntigravityCompressorEditor::~AntigravityCompressorEditor() {}
@@ -121,41 +116,58 @@ AntigravityCompressorEditor::~AntigravityCompressorEditor() {}
 void AntigravityCompressorEditor::paint (juce::Graphics& g)
 {
     g.fillAll (juce::Colour(0xff1a1a2e));
-
     g.setColour (juce::Colours::cyan);
     g.setFont (24.0f);
     g.drawFittedText ("Antigravity Compressor Engine", 0, 10, getWidth(), 30, juce::Justification::centred, 1);
 
+    // הוספת כיתוב מתחת לכל כפתור כדי שנדע מה הוא
     g.setColour (juce::Colours::white);
-    g.setFont (16.0f);
+    g.setFont (14.0f);
+    int rowY = 370; // גובה הטקסטים
+    int knobW = 90;
+    int space = 30;
+    int x = 40;
+
+    g.drawText("In Gain", x, rowY, knobW, 20, juce::Justification::centred); x += knobW + space;
+    g.drawText("Low Thresh", x, rowY, knobW, 20, juce::Justification::centred); x += knobW + space;
+    g.drawText("Up Thresh", x, rowY, knobW, 20, juce::Justification::centred); x += knobW + space;
     
-    int labelX = 20;
-    int startY = 460;
+    g.drawText("Mode", x, rowY, knobW, 20, juce::Justification::centred); x += knobW + space;
     
-    g.drawText("Upper Thresh:", labelX, startY, 100, 20, juce::Justification::left);
-    g.drawText("Lower Thresh:", labelX, startY + 40, 100, 20, juce::Justification::left);
-    g.drawText("Mode:", labelX, startY + 80, 100, 20, juce::Justification::left);
-    g.drawText("Ratio:", labelX, startY + 120, 100, 20, juce::Justification::left);
-    g.drawText("Shift:", labelX, startY + 160, 100, 20, juce::Justification::left);
-    g.drawText("Target Level:", labelX, startY + 200, 100, 20, juce::Justification::left);
+    g.drawText("Ratio", x, rowY, knobW, 20, juce::Justification::centred); x += knobW + space;
+    g.drawText("Shift", x, rowY, knobW, 20, juce::Justification::centred); x += knobW + space;
+    g.drawText("Target", x, rowY, knobW, 20, juce::Justification::centred); x += knobW + space;
+    g.drawText("Out Gain", x, rowY, knobW, 20, juce::Justification::centred);
 }
 
 void AntigravityCompressorEditor::resized()
 {
-    waveformDisplay.setBounds(20, 50, getWidth() - 40, 180);
-    envelopeDrawer.setBounds(20, 240, getWidth() - 40, 180);
-
-    int startX = 130;
-    int width = getWidth() - startX - 20;
-    int height = 20;
-    int startY = 460;
-
-    threshUpSlider.setBounds(startX, startY, width, height);
-    threshDownSlider.setBounds(startX, startY + 40, width, height);
-    modeComboBox.setBounds(startX, startY + 80, width, height);
-    ratioSlider.setBounds(startX, startY + 120, width, height);
-    shiftSlider.setBounds(startX, startY + 160, width, height);
-    targetSlider.setBounds(startX, startY + 200, width, height);
+    auto bounds = getLocalBounds();
     
-    lockButton.setBounds(startX, startY + 240, width, 30);
+    // מסך הגל רחב למעלה
+    waveformDisplay.setBounds(20, 50, bounds.getWidth() - 40, 200);
+    
+    // שורת הכפתורים המרכזית מאוזנת!
+    int rowY = 270;
+    int knobW = 90;
+    int knobH = 100;
+    int space = 30;
+    int x = 40;
+
+    inGainSlider.setBounds(x, rowY, knobW, knobH); x += knobW + space;
+    threshDownSlider.setBounds(x, rowY, knobW, knobH); x += knobW + space;
+    threshUpSlider.setBounds(x, rowY, knobW, knobH); x += knobW + space;
+    
+    // תפריט הבחירה יושב בין הטרשהולדים לכפתורי הפעולה
+    modeComboBox.setBounds(x, rowY + 30, knobW, 30); x += knobW + space;
+    
+    ratioSlider.setBounds(x, rowY, knobW, knobH); x += knobW + space;
+    shiftSlider.setBounds(x, rowY, knobW, knobH); x += knobW + space;
+    targetSlider.setBounds(x, rowY, knobW, knobH); x += knobW + space;
+    outGainSlider.setBounds(x, rowY, knobW, knobH);
+    
+    lockButton.setBounds(x - (knobW + space), rowY + knobH, 120, 20); // מתחת לטארגט
+
+    // אזור ה-LFO נכנס למטה
+    envelopeDrawer.setBounds(20, 420, bounds.getWidth() - 40, bounds.getHeight() - 440);
 }
