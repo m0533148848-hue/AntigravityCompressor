@@ -1,7 +1,8 @@
 #pragma once
 #include <juce_audio_processors/juce_audio_processors.h>
+#include <array>
+#include <atomic>
 
-// הצהרה מוקדמת על קובץ הממשק (Editor)
 class AntigravityCompressorEditor;
 
 class AntigravityCompressorProcessor : public juce::AudioProcessor {
@@ -31,8 +32,13 @@ public:
     void getStateInformation (juce::MemoryBlock& destData) override {}
     void setStateInformation (const void* data, int sizeInBytes) override {}
 
-    // המערכת לניהול כל הכפתורים והפרמטרים
     juce::AudioProcessorValueTreeState apvts;
+
+    // --- מערכת זיכרון לתצוגת האודיו ---
+    static const int visualBufferSize = 512;
+    std::array<float, visualBufferSize> inVisualBuffer { 0.0f };
+    std::array<float, visualBufferSize> outVisualBuffer { 0.0f };
+    std::atomic<int> visualBufferIndex { 0 };
 
 private:
     juce::AudioProcessorValueTreeState::ParameterLayout createParameters();
