@@ -77,10 +77,8 @@ AntigravityCompressorEditor::AntigravityCompressorEditor (AntigravityCompressorP
 
     setupRotaryKnob(inGainSlider);
     inGainAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(audioProcessor.apvts, "IN_GAIN", inGainSlider);
-
     setupRotaryKnob(threshDownSlider);
     threshDownAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(audioProcessor.apvts, "THRESH_DOWN", threshDownSlider);
-
     setupRotaryKnob(threshUpSlider);
     threshUpAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(audioProcessor.apvts, "THRESH_UP", threshUpSlider);
 
@@ -92,24 +90,42 @@ AntigravityCompressorEditor::AntigravityCompressorEditor (AntigravityCompressorP
 
     setupRotaryKnob(ratioSlider);
     ratioAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(audioProcessor.apvts, "RATIO", ratioSlider);
-
     setupRotaryKnob(shiftSlider);
     shiftAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(audioProcessor.apvts, "SHIFT", shiftSlider);
-
     setupRotaryKnob(targetSlider);
     targetAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(audioProcessor.apvts, "TARGET", targetSlider);
-
     setupRotaryKnob(outGainSlider);
     outGainAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(audioProcessor.apvts, "OUT_GAIN", outGainSlider);
 
     addAndMakeVisible(lockButton);
     lockAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(audioProcessor.apvts, "LOCK_TO_LOWER", lockButton);
 
-    // הגדרת המאזין: כשהתפריט משתנה, תעדכן את תצוגת הכפתורים
     modeComboBox.onChange = [this] { updateVisibility(); };
-    
-    // קריאה ראשונה לפונקציה כדי לסדר את המסך ברגע שהוא נפתח
     updateVisibility();
+
+    // --- אתחול תפריטי ה-Sidechain ---
+    scTriggerSelect.addItem("Trigger 1", 1);
+    scTriggerSelect.addItem("Add New...", 2);
+    scTriggerSelect.setSelectedId(1);
+    addAndMakeVisible(scTriggerSelect);
+
+    scDeleteButton.setColour(juce::TextButton::buttonColourId, juce::Colours::darkred);
+    addAndMakeVisible(scDeleteButton);
+
+    scActionBox.addItem("Cut Volume", 1);
+    scActionBox.addItem("Boost Volume", 2);
+    scActionBox.setSelectedId(1);
+    addAndMakeVisible(scActionBox);
+
+    scConditionBox.addItem("When Signal Present", 1);
+    scConditionBox.addItem("When Signal Absent", 2);
+    scConditionBox.setSelectedId(1);
+    addAndMakeVisible(scConditionBox);
+
+    scRangeBox.addItem("Inside Threshold", 1);
+    scRangeBox.addItem("Outside Threshold", 2);
+    scRangeBox.setSelectedId(1);
+    addAndMakeVisible(scRangeBox);
 
     setResizable(true, true);
     setResizeLimits(800, 500, 1600, 1000);
@@ -132,19 +148,33 @@ void AntigravityCompressorEditor::paint (juce::Graphics& g)
     int space = 30;
     int x = 40;
 
-    // כיתובים סטטיים לכפתורים שתמיד קיימים
     g.drawText("In Gain", x, rowY, knobW, 20, juce::Justification::centred); x += knobW + space;
     g.drawText("Low Thresh", x, rowY, knobW, 20, juce::Justification::centred); x += knobW + space;
     g.drawText("Up Thresh", x, rowY, knobW, 20, juce::Justification::centred); x += knobW + space;
     g.drawText("Mode", x, rowY, knobW, 20, juce::Justification::centred); x += knobW + space;
     
-    // כיתובים דינמיים (נצייר אותם רק אם הכפתור שלהם מוצג כרגע)
     if (ratioSlider.isVisible())  g.drawText("Ratio", x, rowY, knobW, 20, juce::Justification::centred); 
     if (shiftSlider.isVisible())  g.drawText("Shift", x, rowY, knobW, 20, juce::Justification::centred); 
     if (targetSlider.isVisible()) g.drawText("Target", x, rowY, knobW, 20, juce::Justification::centred); 
     
     x += knobW + space;
     g.drawText("Out Gain", x, rowY, knobW, 20, juce::Justification::centred);
+
+    // ציור רקע מיוחד עבור פאנל ה-Sidechain
+    auto bounds = getLocalBounds();
+    int scPanelX = bounds.getWidth() - 320;
+    int scPanelY = 420;
+    int scPanelW = 300;
+    int scPanelH = bounds.getHeight() - 440;
+
+    g.setColour(juce::Colour(0xff222233)); // אפור-כחלחל כהה יותר
+    g.fillRoundedRectangle(scPanelX, scPanelY, scPanelW, scPanelH, 8.0f);
+    g.setColour(juce::Colours::cyan.withAlpha(0.5f));
+    g.drawRoundedRectangle(scPanelX, scPanelY, scPanelW, scPanelH, 8.0f, 1.0f);
+
+    g.setColour(juce::Colours::white);
+    g.setFont(18.0f);
+    g.drawText("Sidechain Triggers", scPanelX, scPanelY + 10, scPanelW, 25, juce::Justification::centred);
 }
 
 void AntigravityCompressorEditor::resized()
@@ -164,32 +194,38 @@ void AntigravityCompressorEditor::resized()
     
     modeComboBox.setBounds(x, rowY + 30, knobW, 30); x += knobW + space;
     
-    // כולם יושבים על אותן הקואורדינטות במיקום ה"דינמי", כי רק אחד מהם פעיל בכל פעם
     ratioSlider.setBounds(x, rowY, knobW, knobH); 
     shiftSlider.setBounds(x, rowY, knobW, knobH); 
     targetSlider.setBounds(x, rowY, knobW, knobH); 
     
-    lockButton.setBounds(x - 15, rowY + knobH, 120, 20); // ממורכז מתחת לכפתור הדינמי
+    lockButton.setBounds(x - 15, rowY + knobH, 120, 20);
 
     x += knobW + space;
     outGainSlider.setBounds(x, rowY, knobW, knobH);
     
-    envelopeDrawer.setBounds(20, 420, bounds.getWidth() - 40, bounds.getHeight() - 440);
+    // סידור החלק התחתון: LFO משמאל, Sidechain מימין
+    int bottomY = 420;
+    int bottomH = bounds.getHeight() - 440;
+    
+    envelopeDrawer.setBounds(20, bottomY, bounds.getWidth() - 360, bottomH);
+
+    // סידור תפריטי ה-Sidechain בתוך הפאנל שלהם
+    int scX = bounds.getWidth() - 300;
+    int scW = 260;
+    
+    scTriggerSelect.setBounds(scX, bottomY + 50, scW - 40, 30);
+    scDeleteButton.setBounds(scX + scW - 35, bottomY + 50, 35, 30);
+    scActionBox.setBounds(scX, bottomY + 100, scW, 30);
+    scConditionBox.setBounds(scX, bottomY + 150, scW, 30);
+    scRangeBox.setBounds(scX, bottomY + 200, scW, 30);
 }
 
-// הלוגיקה החכמה של הסתרת הכפתורים
 void AntigravityCompressorEditor::updateVisibility()
 {
-    // בודק איזה מצב נבחר כרגע בתפריט (0 = Ratio, 1 = Shift, 2 = Target)
     int mode = modeComboBox.getSelectedItemIndex();
-    
-    // מדליק ומכבה את הכפתורים הרלוונטיים
     ratioSlider.setVisible(mode == 0);
     shiftSlider.setVisible(mode == 1);
-    
     targetSlider.setVisible(mode == 2);
     lockButton.setVisible(mode == 2);
-
-    // פקודה שמבקשת מהמסך לצייר את עצמו מחדש כדי לרענן את כיתובי הטקסט
     repaint();
 }
