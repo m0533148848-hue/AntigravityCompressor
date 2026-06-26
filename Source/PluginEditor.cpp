@@ -69,7 +69,6 @@ AntigravityCompressorEditor::AntigravityCompressorEditor (AntigravityCompressorP
     addAndMakeVisible(waveformDisplay);
     addAndMakeVisible(envelopeDrawer);
 
-    // פונקציית עזר להגדרת כל כפתור להיות עגול עם מסך טקסט מעליו
     auto setupRotaryKnob = [this](juce::Slider& slider) {
         slider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
         slider.setTextBoxStyle(juce::Slider::TextBoxAbove, false, 60, 20);
@@ -106,9 +105,15 @@ AntigravityCompressorEditor::AntigravityCompressorEditor (AntigravityCompressorP
     addAndMakeVisible(lockButton);
     lockAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(audioProcessor.apvts, "LOCK_TO_LOWER", lockButton);
 
+    // הגדרת המאזין: כשהתפריט משתנה, תעדכן את תצוגת הכפתורים
+    modeComboBox.onChange = [this] { updateVisibility(); };
+    
+    // קריאה ראשונה לפונקציה כדי לסדר את המסך ברגע שהוא נפתח
+    updateVisibility();
+
     setResizable(true, true);
     setResizeLimits(800, 500, 1600, 1000);
-    setSize(1100, 650); // גודל פנורמי רחב כמו בציור
+    setSize(1100, 650);
 }
 
 AntigravityCompressorEditor::~AntigravityCompressorEditor() {}
@@ -120,34 +125,33 @@ void AntigravityCompressorEditor::paint (juce::Graphics& g)
     g.setFont (24.0f);
     g.drawFittedText ("Antigravity Compressor Engine", 0, 10, getWidth(), 30, juce::Justification::centred, 1);
 
-    // הוספת כיתוב מתחת לכל כפתור כדי שנדע מה הוא
     g.setColour (juce::Colours::white);
     g.setFont (14.0f);
-    int rowY = 370; // גובה הטקסטים
+    int rowY = 370;
     int knobW = 90;
     int space = 30;
     int x = 40;
 
+    // כיתובים סטטיים לכפתורים שתמיד קיימים
     g.drawText("In Gain", x, rowY, knobW, 20, juce::Justification::centred); x += knobW + space;
     g.drawText("Low Thresh", x, rowY, knobW, 20, juce::Justification::centred); x += knobW + space;
     g.drawText("Up Thresh", x, rowY, knobW, 20, juce::Justification::centred); x += knobW + space;
-    
     g.drawText("Mode", x, rowY, knobW, 20, juce::Justification::centred); x += knobW + space;
     
-    g.drawText("Ratio", x, rowY, knobW, 20, juce::Justification::centred); x += knobW + space;
-    g.drawText("Shift", x, rowY, knobW, 20, juce::Justification::centred); x += knobW + space;
-    g.drawText("Target", x, rowY, knobW, 20, juce::Justification::centred); x += knobW + space;
+    // כיתובים דינמיים (נצייר אותם רק אם הכפתור שלהם מוצג כרגע)
+    if (ratioSlider.isVisible())  g.drawText("Ratio", x, rowY, knobW, 20, juce::Justification::centred); 
+    if (shiftSlider.isVisible())  g.drawText("Shift", x, rowY, knobW, 20, juce::Justification::centred); 
+    if (targetSlider.isVisible()) g.drawText("Target", x, rowY, knobW, 20, juce::Justification::centred); 
+    
+    x += knobW + space;
     g.drawText("Out Gain", x, rowY, knobW, 20, juce::Justification::centred);
 }
 
 void AntigravityCompressorEditor::resized()
 {
     auto bounds = getLocalBounds();
-    
-    // מסך הגל רחב למעלה
     waveformDisplay.setBounds(20, 50, bounds.getWidth() - 40, 200);
     
-    // שורת הכפתורים המרכזית מאוזנת!
     int rowY = 270;
     int knobW = 90;
     int knobH = 100;
@@ -158,16 +162,34 @@ void AntigravityCompressorEditor::resized()
     threshDownSlider.setBounds(x, rowY, knobW, knobH); x += knobW + space;
     threshUpSlider.setBounds(x, rowY, knobW, knobH); x += knobW + space;
     
-    // תפריט הבחירה יושב בין הטרשהולדים לכפתורי הפעולה
     modeComboBox.setBounds(x, rowY + 30, knobW, 30); x += knobW + space;
     
-    ratioSlider.setBounds(x, rowY, knobW, knobH); x += knobW + space;
-    shiftSlider.setBounds(x, rowY, knobW, knobH); x += knobW + space;
-    targetSlider.setBounds(x, rowY, knobW, knobH); x += knobW + space;
+    // כולם יושבים על אותן הקואורדינטות במיקום ה"דינמי", כי רק אחד מהם פעיל בכל פעם
+    ratioSlider.setBounds(x, rowY, knobW, knobH); 
+    shiftSlider.setBounds(x, rowY, knobW, knobH); 
+    targetSlider.setBounds(x, rowY, knobW, knobH); 
+    
+    lockButton.setBounds(x - 15, rowY + knobH, 120, 20); // ממורכז מתחת לכפתור הדינמי
+
+    x += knobW + space;
     outGainSlider.setBounds(x, rowY, knobW, knobH);
     
-    lockButton.setBounds(x - (knobW + space), rowY + knobH, 120, 20); // מתחת לטארגט
-
-    // אזור ה-LFO נכנס למטה
     envelopeDrawer.setBounds(20, 420, bounds.getWidth() - 40, bounds.getHeight() - 440);
+}
+
+// הלוגיקה החכמה של הסתרת הכפתורים
+void AntigravityCompressorEditor::updateVisibility()
+{
+    // בודק איזה מצב נבחר כרגע בתפריט (0 = Ratio, 1 = Shift, 2 = Target)
+    int mode = modeComboBox.getSelectedItemIndex();
+    
+    // מדליק ומכבה את הכפתורים הרלוונטיים
+    ratioSlider.setVisible(mode == 0);
+    shiftSlider.setVisible(mode == 1);
+    
+    targetSlider.setVisible(mode == 2);
+    lockButton.setVisible(mode == 2);
+
+    // פקודה שמבקשת מהמסך לצייר את עצמו מחדש כדי לרענן את כיתובי הטקסט
+    repaint();
 }
