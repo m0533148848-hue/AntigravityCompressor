@@ -48,6 +48,13 @@ private:
     juce::Slider outGainSlider;
     juce::ToggleButton lockButton { "Lock Target" };
 
+    // --- רכיבי ה-Sidechain החדשים ---
+    juce::ComboBox scTriggerSelect;
+    juce::TextButton scDeleteButton { "X" };
+    juce::ComboBox scActionBox;
+    juce::ComboBox scConditionBox;
+    juce::ComboBox scRangeBox;
+
     using SliderAttachment = juce::AudioProcessorValueTreeState::SliderAttachment;
     using ComboBoxAttachment = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
     using ButtonAttachment = juce::AudioProcessorValueTreeState::ButtonAttachment;
@@ -62,7 +69,6 @@ private:
     std::unique_ptr<SliderAttachment> outGainAttachment;
     std::unique_ptr<ButtonAttachment> lockAttachment;
 
-    // --- הפונקציה שאחראית להעלים ולהציג כפתורים ---
     void updateVisibility();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AntigravityCompressorEditor)
