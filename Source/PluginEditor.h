@@ -38,7 +38,6 @@ private:
     WaveformDisplay waveformDisplay;
     EnvelopeDrawer envelopeDrawer;
 
-    // כל הכפתורים
     juce::Slider inGainSlider;
     juce::Slider threshDownSlider;
     juce::Slider threshUpSlider;
@@ -62,6 +61,9 @@ private:
     std::unique_ptr<SliderAttachment> targetAttachment;
     std::unique_ptr<SliderAttachment> outGainAttachment;
     std::unique_ptr<ButtonAttachment> lockAttachment;
+
+    // --- הפונקציה שאחראית להעלים ולהציג כפתורים ---
+    void updateVisibility();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AntigravityCompressorEditor)
 };
