@@ -2,8 +2,6 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <atomic>
 
-class AntigravityCompressorEditor;
-
 class AntigravityCompressorProcessor : public juce::AudioProcessor {
 public:
     AntigravityCompressorProcessor();
@@ -35,6 +33,7 @@ public:
 
     std::atomic<float> currentInPeak { 0.0f };
     std::atomic<float> currentOutPeak { 0.0f };
+    std::atomic<float> currentGR { 0.0f };
 
 private:
     juce::AudioProcessorValueTreeState::ParameterLayout createParameters();
