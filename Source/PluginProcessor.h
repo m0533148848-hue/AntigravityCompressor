@@ -1,6 +1,5 @@
 #pragma once
 #include <juce_audio_processors/juce_audio_processors.h>
-#include <array>
 #include <atomic>
 
 class AntigravityCompressorEditor;
@@ -34,11 +33,8 @@ public:
 
     juce::AudioProcessorValueTreeState apvts;
 
-    // --- מערכת זיכרון לתצוגת האודיו ---
-    static const int visualBufferSize = 512;
-    std::array<float, visualBufferSize> inVisualBuffer { 0.0f };
-    std::array<float, visualBufferSize> outVisualBuffer { 0.0f };
-    std::atomic<int> visualBufferIndex { 0 };
+    std::atomic<float> currentInPeak { 0.0f };
+    std::atomic<float> currentOutPeak { 0.0f };
 
 private:
     juce::AudioProcessorValueTreeState::ParameterLayout createParameters();
