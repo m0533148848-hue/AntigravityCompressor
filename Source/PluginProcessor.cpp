@@ -14,14 +14,18 @@ AntigravityCompressorProcessor::~AntigravityCompressorProcessor() {}
 juce::AudioProcessorValueTreeState::ParameterLayout AntigravityCompressorProcessor::createParameters() {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
     
-    params.push_back(std::make_unique<juce::AudioParameterFloat>("THRESH_UP", "Upper Threshold (dB)", -60.0f, 0.0f, -10.0f));
-    params.push_back(std::make_unique<juce::AudioParameterFloat>("THRESH_DOWN", "Lower Threshold (dB)", -60.0f, 0.0f, -30.0f));
-    params.push_back(std::make_unique<juce::AudioParameterChoice>("MODE", "Processing Mode", 
-        juce::StringArray{"Ratio (Relative)", "Shift (Arbitrary)", "Target (Absolute)"}, 0));
+    // פרמטרים חדשים לכניסה ויציאה
+    params.push_back(std::make_unique<juce::AudioParameterFloat>("IN_GAIN", "In Gain (dB)", -24.0f, 24.0f, 0.0f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>("OUT_GAIN", "Out Gain (dB)", -24.0f, 24.0f, 0.0f));
+
+    params.push_back(std::make_unique<juce::AudioParameterFloat>("THRESH_UP", "Upper Thresh", -60.0f, 0.0f, -10.0f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>("THRESH_DOWN", "Lower Thresh", -60.0f, 0.0f, -30.0f));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>("MODE", "Mode", 
+        juce::StringArray{"Ratio", "Shift", "Target"}, 0));
     params.push_back(std::make_unique<juce::AudioParameterFloat>("RATIO", "Ratio", 1.0f, 20.0f, 2.0f));
-    params.push_back(std::make_unique<juce::AudioParameterFloat>("SHIFT", "Shift Volume (dB)", -24.0f, 24.0f, 0.0f));
-    params.push_back(std::make_unique<juce::AudioParameterFloat>("TARGET", "Target Level (dB)", -60.0f, 0.0f, -20.0f));
-    params.push_back(std::make_unique<juce::AudioParameterBool>("LOCK_TO_LOWER", "Lock Target to Lower Thresh", false));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>("SHIFT", "Shift (dB)", -24.0f, 24.0f, 0.0f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>("TARGET", "Target (dB)", -60.0f, 0.0f, -20.0f));
+    params.push_back(std::make_unique<juce::AudioParameterBool>("LOCK_TO_LOWER", "Lock Target", false));
     
     return { params.begin(), params.end() };
 }
@@ -37,6 +41,8 @@ void AntigravityCompressorProcessor::processBlock (juce::AudioBuffer<float>& buf
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear (i, 0, buffer.getNumSamples());
 
+    float inGainDb = apvts.getRawParameterValue("IN_GAIN")->load();
+    float outGainDb = apvts.getRawParameterValue("OUT_GAIN")->load();
     float threshUp = apvts.getRawParameterValue("THRESH_UP")->load();
     float threshDown = apvts.getRawParameterValue("THRESH_DOWN")->load();
     int mode = static_cast<int>(apvts.getRawParameterValue("MODE")->load());
@@ -47,12 +53,18 @@ void AntigravityCompressorProcessor::processBlock (juce::AudioBuffer<float>& buf
 
     if (lockToLower) { target = threshDown; }
 
+    float maxIn = 0.0f;
+    float maxOut = 0.0f;
+    float inGainLinear = juce::Decibels::decibelsToGain(inGainDb);
+    float outGainLinear = juce::Decibels::decibelsToGain(outGainDb);
+
     for (int channel = 0; channel < totalNumInputChannels; ++channel) {
         auto* channelData = buffer.getWritePointer(channel);
 
         for (int sample = 0; sample < buffer.getNumSamples(); ++sample) {
-            float inSample = channelData[sample];
-            float finalSample = inSample; // מצב ברירת מחדל: לא משנים כלום
+            // החלת גיין כניסה
+            float inSample = channelData[sample] * inGainLinear;
+            float finalSample = inSample;
 
             if (std::abs(inSample) > 0.000001f) {
                 float inDb = juce::Decibels::gainToDecibels(std::abs(inSample));
@@ -67,23 +79,19 @@ void AntigravityCompressorProcessor::processBlock (juce::AudioBuffer<float>& buf
                     finalSample = (inSample > 0.0f) ? outGain : -outGain;
                 }
             }
-
+            
+            // החלת גיין יציאה
+            finalSample *= outGainLinear;
             channelData[sample] = finalSample;
 
-            // שמירת הדגימה בזיכרון של המסך (רק לערוץ השמאלי/ראשי כדי לא להכביד)
-            if (channel == 0) {
-                int index = visualBufferIndex.load();
-                inVisualBuffer[index] = inSample;
-                outVisualBuffer[index] = finalSample;
-                visualBufferIndex.store((index + 1) % visualBufferSize);
-            }
+            if (std::abs(inSample) > maxIn) maxIn = std::abs(inSample);
+            if (std::abs(finalSample) > maxOut) maxOut = std::abs(finalSample);
         }
     }
+
+    if (maxIn > currentInPeak.load()) currentInPeak.store(maxIn);
+    if (maxOut > currentOutPeak.load()) currentOutPeak.store(maxOut);
 }
 
-juce::AudioProcessorEditor* AntigravityCompressorProcessor::createEditor() {
-    return new AntigravityCompressorEditor (*this);
-}
-juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() {
-    return new AntigravityCompressorProcessor();
-}
+juce::AudioProcessorEditor* AntigravityCompressorProcessor::createEditor() { return new AntigravityCompressorEditor (*this); }
+juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new AntigravityCompressorProcessor(); }
